@@ -47,18 +47,35 @@
       let currentChapter = null;
       let currentVerse = null;
       let currentSection = 's'; 
+      let expectingNewVerse = false; 
 
       const toEngDigits = (str) => str ? str.replace(/[०-९]/g, d => '०१२३४५६७८९'.indexOf(d)) : '';
 
       const lines = text.split('\n');
       for (let i = 0; i < lines.length; i++) {
         let line = lines[i].replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-        line = line.replace(/^"|"$/g, '').trim(); // श्लोकों के आस-पास लगे " " को हटा दें
+        line = line.replace(/^"|"$/g, '').trim(); 
         
-        if (!line) continue;
+        if (!line) {
+          if (currentVerse && (currentVerse.h || currentVerse.a || currentVerse.s)) {
+            expectingNewVerse = true;
+          }
+          continue;
+        }
 
-        // अध्याय/वल्ली/मुण्डक की पहचान को और अधिक विस्तृत किया गया
-        const isChapterMatch = line.match(/^(?:अध्याय|प्रकरण|शतक|सर्ग|खण्ड|ब्राह्मणम्|ब्राह्मण|वल्ली|मुण्डक|Chapter)\s*([०-९\d]+)?/i) || 
+        // अध्याय के अंत की 'पुष्पिका' (ॐ तत्सदिति) को फालतू श्लोक न मानें
+        const isPushpika = line.includes('ॐ तत्सदिति') || 
+                           line.includes('श्रीमद्भगवद्गीतासूपनिषत्सु') || 
+                           line.includes('योगशास्त्रे श्रीकृष्णार्जुनसंवादे') || 
+                           line.match(/नाम\s+.*?ऽध्यायः/i) ||
+                           line.match(/^हरिः?\s*ॐ/i) ||
+                           line.match(/^अथ\s+.*?अध्यायः/i);
+                           
+        if (isPushpika) {
+            continue; 
+        }
+
+        const isChapterMatch = line.match(/^(?:अध्याय|प्रकरणम्|प्रकरण|शतक|सर्ग|खण्ड|ब्राह्मणम्|ब्राह्मण|वल्ली|मुण्डक|Chapter)(?:\s+|[\:\-\.\_]|$|(?=[०-९\d]))([०-९\d]+)?/i) || 
                                line.match(/^(?:प्रथम|द्वितीय|तृतीय|चतुर्थ|पंचम|षष्ठ|सप्तम|अष्टम|नवम|दशम|एकादश|द्वादश)\s+(?:अध्याय|प्रकरण|खण्ड|ब्राह्मण|वल्ली|मुण्डक|प्रश्न)/i) ||
                                line.match(/^.*?वल्ली\s*\(/i) ||
                                line.match(/^.*?मुण्डक\s*\-/i);
@@ -66,12 +83,12 @@
         let verseNumStr = null;
         let remainingVerseText = '';
         
-        // श्लोक 1.1.1 या श्लोक 1.1: को पहचानने के लिए डॉट्स (\.) को अनुमति
-        const vMatch1 = line.match(/^(?:श्लोक|मंत्र|मन्त्र|Verse|श्लो\.|मं\.|प्रश्न|Mantra)\s*[\[\(\.]?\s*([०-९\d\.]+)\s*[\]\)\.\:]?\s*(.*)/i);
-        const vMatch2 = line.match(/^[\[\(]\s*([०-९\d\.]+)\s*[\]\)]\s*[\.\:\-\)]?\s*(.*)/);
-        const vMatch3 = line.match(/^([०-९\d\.]+)\s*[\.\:\-\)]\s*(.*)/);
-        const vMatch4 = line.match(/^([०-९\d\.]+)\s*$/); 
-        const vMatch5 = line.match(/^([०-९\d\.]+)\s+(.*)/); 
+        // जादुई फिक्स: '...' (सिर्फ डॉट्स) को श्लोक नंबर न माने, श्लोक नंबर में हमेशा अंक (Digit) होना अनिवार्य कर दिया गया है
+        const vMatch1 = line.match(/^(?:श्लोक|मंत्र|मन्त्र|Verse|श्लो\.|मं\.|प्रश्न|Mantra)\s*[\[\(\.]?\s*([०-९\d]+(?:\.[०-९\d]+)*)\s*[\]\)\.\:]?\s*(.*)/i);
+        const vMatch2 = line.match(/^[\[\(]\s*([०-९\d]+(?:\.[०-९\d]+)*)\s*[\]\)]\s*[\.\:\-\)]?\s*(.*)/);
+        const vMatch3 = line.match(/^([०-९\d]+(?:\.[०-९\d]+)*)\s*[\.\:\-\)]\s*(.*)/);
+        const vMatch4 = line.match(/^([०-९\d]+(?:\.[०-९\d]+)*)\s*$/); 
+        const vMatch5 = line.match(/^([०-९\d]+(?:\.[०-९\d]+)*)\s+(.*)/); 
         
         if (vMatch1) { verseNumStr = vMatch1[1]; remainingVerseText = vMatch1[2]; }
         else if (vMatch2) { verseNumStr = vMatch2[1]; remainingVerseText = vMatch2[2]; }
@@ -82,12 +99,9 @@
         const isMeaningMatch = line.match(/^(?:सरल अर्थ|अर्थ|भावार्थ|अनुवाद|हिंदी अर्थ|हिन्दी अर्थ|तात्पर्य|व्याख्या|Meaning|Translation)\s*[\:\-\.]?\s*(.*)/i);
         const isAppMatch = line.match(/^(?:जीवन में प्रयोग|जीवन प्रयोग|प्रयोग|संदेश|सीख|Application|Message)\s*[\:\-\.]?\s*(.*)/i);
         
-        // अगर सिर्फ 'श्लोक:' या 'मूल:' लिखा हो, तो उसे नया श्लोक न माने बल्कि संस्कृत का सेक्शन माने
         const isSanskritMatch = line.match(/^(?:श्लोक|संस्कृत|मूल)\s*[\:\-\.]\s*(.*)/i);
 
         if (isChapterMatch && !isMeaningMatch && !isAppMatch && !verseNumStr && !isSanskritMatch) {
-          
-          // चैप्टर नंबर निकालने का मजबूत तरीका
           let chId = chapters.length + 1;
           const chMatchNum = line.match(/(?:अध्याय|प्रकरण|शतक|सर्ग|खण्ड|ब्राह्मणम्|ब्राह्मण|वल्ली|मुण्डक|Chapter)\s*([०-९\d]+)/i);
           
@@ -100,7 +114,6 @@
             }
           }
 
-          // ऋभु गीता फिक्स: अगर उसी अध्याय का नाम श्लोक के बीच में दोबारा आ जाए, तो उसे इग्नोर करें!
           if (currentChapter && currentChapter.id === chId) {
             continue; 
           }
@@ -125,6 +138,31 @@
           currentSection = 's';
         } 
         else if (verseNumStr && !isMeaningMatch && !isAppMatch && !isSanskritMatch) {
+          
+          if (currentVerse && (currentVerse.h || currentVerse.a)) {
+             let isListItem = false;
+             const parsedNum = parseInt(toEngDigits(verseNumStr)) || 0;
+             const currentIdNum = parseInt(currentVerse.id) || 0;
+             
+             if (!line.match(/^(?:श्लोक|मंत्र|मन्त्र|Verse|श्लो\.|मं\.|प्रश्न)/i)) {
+                 if (vMatch2 || vMatch3 || vMatch5) {
+                     if (parsedNum < currentIdNum || parsedNum > currentIdNum + 2) {
+                         isListItem = true;
+                     }
+                     if (!expectingNewVerse) {
+                         isListItem = true;
+                     }
+                 }
+             }
+             
+             if (isListItem) {
+                 if (currentSection === 'a') currentVerse.a += '\n' + line;
+                 else if (currentSection === 'h') currentVerse.h += '\n' + line;
+                 else currentVerse.s += '\n' + line;
+                 continue;
+             }
+          }
+
           if (!currentChapter) currentChapter = { id: 1, title: 'अध्याय 1', verses: [] };
 
           if (currentVerse && (currentVerse.s || currentVerse.h || currentVerse.a)) {
@@ -132,7 +170,7 @@
           }
           
           currentVerse = {
-            id: toEngDigits(verseNumStr).replace(/[\.\:\-]$/, ''), // पीछे लगे डॉट्स हटा दें
+            id: toEngDigits(verseNumStr).replace(/[\.\:\-]$/, ''), 
             s: remainingVerseText, 
             h: '', 
             a: ''
@@ -144,6 +182,7 @@
           if (!currentVerse) currentVerse = { id: 1, s: '', h: '', a: '' };
           
           currentSection = 'h';
+          expectingNewVerse = false;
           if (isMeaningMatch[1]) currentVerse.h += (currentVerse.h ? '\n' : '') + isMeaningMatch[1];
         } 
         else if (isAppMatch) {
@@ -151,6 +190,7 @@
           if (!currentVerse) currentVerse = { id: 1, s: '', h: '', a: '' };
           
           currentSection = 'a';
+          expectingNewVerse = false;
           if (isAppMatch[1]) currentVerse.a += (currentVerse.a ? '\n' : '') + isAppMatch[1];
         } 
         else if (isSanskritMatch && currentVerse) {
@@ -161,14 +201,50 @@
           if (!currentChapter) currentChapter = { id: 1, title: 'अध्याय 1', verses: [] };
           if (!currentVerse) currentVerse = { id: 1, s: '', h: '', a: '' };
           
-          if (currentSection === 'h') {
-            currentVerse.h += (currentVerse.h ? '\n' : '') + line;
-          } 
-          else if (currentSection === 'a') {
-            currentVerse.a += (currentVerse.a ? '\n' : '') + line;
+          let forceNewVerse = false;
+          if (expectingNewVerse && currentVerse) {
+            const sEndsWithMarker = currentVerse.s && /(?:॥|\|\|)$/.test(currentVerse.s.trim());
+            
+            // जादुई फिक्स: अगर बिना हेडिंग के सीधा अर्थ आ जाए, तो उसे नया श्लोक न मानें
+            if (sEndsWithMarker && !currentVerse.h && !currentVerse.a && currentSection === 's') {
+                currentSection = 'h'; 
+            } else if (currentVerse.h || currentVerse.a || sEndsWithMarker) {
+                forceNewVerse = true;
+            }
+          }
+
+          if (forceNewVerse) {
+            if (currentVerse.s || currentVerse.h || currentVerse.a) currentChapter.verses.push(currentVerse);
+            currentVerse = { id: currentChapter.verses.length + 1, s: line, h: '', a: '' };
+            currentSection = 's';
+            expectingNewVerse = false;
           } 
           else {
-            currentVerse.s += (currentVerse.s ? '\n' : '') + line;
+             const isOnlyDandaNum = line.match(/^(?:॥|\|\|)\s*[०-९\d]+\s*(?:॥|\|\|)$/);
+             const isSanskritFinished = /(?:॥|\|\|)/.test(currentVerse.s);
+             
+             // नया जादुई फिक्स: अगर श्लोक (॥) खत्म हो गया है और कोई हेडिंग नहीं है, तो अगला टेक्स्ट अर्थ (h) में जाएगा
+             if (currentSection === 's' && isSanskritFinished && !isOnlyDandaNum) {
+                 currentSection = 'h';
+             }
+
+             if (currentSection === 'h') {
+               currentVerse.h += (currentVerse.h ? '\n' : '') + line;
+             } 
+             else if (currentSection === 'a') {
+               currentVerse.a += (currentVerse.a ? '\n' : '') + line;
+             } 
+             else {
+               currentVerse.s += (currentVerse.s ? '\n' : '') + line;
+             }
+          }
+          
+          if (currentVerse && !currentVerse.h && !currentVerse.a) {
+            const endNumMatch = line.match(/(?:॥|\|\|)\s*([०-९\d]+)\s*(?:॥|\|\|)$/);
+            if (endNumMatch) {
+              currentVerse.id = parseInt(toEngDigits(endNumMatch[1]));
+              expectingNewVerse = true;
+            }
           }
         }
       }
@@ -279,6 +355,54 @@
       };
       const { tChap, tVerse, totalBooks } = getTotalStats();
 
+      // नया जादुई फंक्शन: जो खाली श्लोकों के लिए आगे वाले श्लोक से सम्मिलित अर्थ ढूँढ लाएगा
+      const getDisplayMeaning = (currentIndex, verses) => {
+          if (!verses || !verses[currentIndex]) return null;
+          let current = verses[currentIndex];
+          
+          if (!current.h && !current.a) {
+              let nextIndex = -1;
+              for (let i = currentIndex + 1; i < verses.length; i++) {
+                  if (verses[i].h || verses[i].a) {
+                      nextIndex = i;
+                      break;
+                  }
+              }
+              if (nextIndex !== -1) {
+                  let startIndex = currentIndex;
+                  while (startIndex > 0 && !verses[startIndex - 1].h && !verses[startIndex - 1].a) {
+                      startIndex--;
+                  }
+                  return {
+                      isCombined: true,
+                      startId: verses[startIndex].id,
+                      endId: verses[nextIndex].id,
+                      h: verses[nextIndex].h,
+                      a: verses[nextIndex].a
+                  };
+              }
+          } else {
+              if (currentIndex > 0 && !verses[currentIndex - 1].h && !verses[currentIndex - 1].a) {
+                  let startIndex = currentIndex - 1;
+                  while (startIndex > 0 && !verses[startIndex - 1].h && !verses[startIndex - 1].a) {
+                      startIndex--;
+                  }
+                  return {
+                      isCombined: true,
+                      startId: verses[startIndex].id,
+                      endId: verses[currentIndex].id,
+                      h: current.h,
+                      a: current.a
+                  };
+              }
+          }
+          return {
+              isCombined: false,
+              h: current.h || '',
+              a: current.a || ''
+          };
+      };
+
       const toggleBookmark = (bookId, chId, vId) => {
         const key = `${bookId}|${chId}|${vId}`;
         setBookmarks(prev => {
@@ -292,6 +416,19 @@
             return [...prev, key];
           }
         });
+      };
+
+      const handleClearData = (e, gitaId) => {
+        e.stopPropagation();
+        if(window.confirm('क्या आप इस ग्रंथ का सारा सहेजा गया डेटा हटाना चाहते हैं?')) {
+           setAllGitaChapters(prev => {
+              const updated = {...prev, [gitaId]: []};
+              localStorage.setItem('gita_offline_data', JSON.stringify(updated));
+              return updated;
+           });
+           setToastMessage('डेटा सफलतापूर्वक हटा दिया गया।');
+           setTimeout(() => setToastMessage(''), 3000);
+        }
       };
 
       const handleFileUpload = async (event, gitaId) => {
@@ -339,13 +476,18 @@
 
           if (!parsedAsJson) {
             text = text.replace(/\\n/g, '\n').replace(/\\r/g, '\r');
-            allText += "\n" + text;
+            let parsedTextChapters = parseGitaText(text);
+            
+            const numInFile = file.name.match(/\d+/);
+            if (parsedTextChapters.length === 1 && parsedTextChapters[0].id === 1 && numInFile && numInFile[0] !== "1") {
+                if (!text.includes('अध्याय 1') && !text.includes('प्रथम')) {
+                    const correctId = parseInt(numInFile[0]);
+                    parsedTextChapters[0].id = correctId;
+                    parsedTextChapters[0].title = `अध्याय ${correctId}`;
+                }
+            }
+            newChapters = [...newChapters, ...parsedTextChapters];
           }
-        }
-
-        if (allText.trim()) {
-           const parsedTextChapters = parseGitaText(allText);
-           newChapters = [...newChapters, ...parsedTextChapters];
         }
         
         newChapters = newChapters.filter(ch => ch.verses && ch.verses.length > 0);
@@ -355,14 +497,26 @@
             const currentBookChapters = prev[gitaId] || [];
             const combined = [...currentBookChapters, ...newChapters];
             
-            const unique = Array.from(new Map(combined.map(c => [c.id, c])).values());
-            const finalChapters = unique.sort((a, b) => a.id - b.id);
+            const chapterMap = new Map();
+            for (const ch of combined) {
+              if (chapterMap.has(ch.id)) {
+                 const existingCh = chapterMap.get(ch.id);
+                 const combinedVerses = [...existingCh.verses, ...ch.verses];
+                 const uniqueVerses = Array.from(new Map(combinedVerses.map(v => [v.id, v])).values());
+                 uniqueVerses.sort((a,b) => a.id - b.id);
+                 existingCh.verses = uniqueVerses;
+                 chapterMap.set(ch.id, existingCh);
+              } else {
+                 chapterMap.set(ch.id, { ...ch });
+              }
+            }
             
+            const finalChapters = Array.from(chapterMap.values()).sort((a, b) => a.id - b.id);
             const updatedAllChapters = { ...prev, [gitaId]: finalChapters };
 
             try {
               localStorage.setItem('gita_offline_data', JSON.stringify(updatedAllChapters));
-              setToastMessage(`सफलतापूर्वक ${newChapters.length} नए अध्याय सुरक्षित हो गए!`);
+              setToastMessage(`सफलतापूर्वक डेटा सुरक्षित हो गया!`);
             } catch (error) {
               setToastMessage('स्टोरेज फुल हो गया है। कृपया कुछ डेटा डिलीट करें!');
             }
@@ -411,16 +565,17 @@
           const verse = chapter.verses[currentVerseIndex];
           if (!verse) return;
 
-          const v_h = verse.h || '';
-          const v_a = verse.a || '';
+          // स्मार्ट मीनिंग डिटेक्टर का उपयोग करें
+          const meaningData = getDisplayMeaning(currentVerseIndex, chapter.verses);
+          const v_h = meaningData?.h || '';
+          const v_a = meaningData?.a || '';
 
           let textToSpeak = '';
           if (v_h) textToSpeak += `इसका अर्थ है ... ${v_h} `;
           if (v_a) textToSpeak += `${v_h ? '... ' : ''}जीवन में प्रयोग ... ${v_a}`;
           
           if (!textToSpeak.trim() || textToSpeak === 'undefined') {
-            alert("बोलने के लिए कोई अर्थ या प्रयोग नहीं मिला।");
-            return;
+            textToSpeak = "इस श्लोक का अर्थ फाइल में उपलब्ध नहीं है।";
           }
           
           speakText(textToSpeak);
@@ -707,7 +862,7 @@
               {book.chapters.length === 0 ? (
                 <div className="text-center py-12 px-6 bg-white rounded-3xl shadow-sm mb-6 border border-[#e8dff5]">
                   <span className="text-5xl block mb-4 opacity-30">📜</span>
-                  <p className="text-[#7a6890] text-sm sm:text-base">अभी कोई डेटा नहीं है। कृपया नीचे दिए गए बटन से फाइलें अपलोड करें。</p>
+                  <p className="text-[#7a6890] text-sm sm:text-base">अभी कोई डेटा नहीं है। कृपया नीचे दिए गए बटन से फाइलें अपलोड करें।</p>
                 </div>
               ) : (
                 <div className="grid gap-3 mb-8">
@@ -726,7 +881,7 @@
                           {chapter.id}
                         </div>
                         <div>
-                          <h4 className="font-bold text-[#1C1018] sm:text-lg mb-1 line-clamp-1">{chapter.title}</h4>
+                          <h4 className="font-bold text-[#1C1018] sm:text-lg mb-1">{chapter.title}</h4>
                           <p className="text-xs sm:text-sm text-[#7a6890]">{chapter.verses.length} श्लोक/मंत्र</p>
                         </div>
                       </div>
@@ -744,17 +899,29 @@
                   आप यहाँ <b>{book.title}</b> की फाइलें अपलोड कर सकते हैं। यह सब बिना इंटरनेट के आपके डिवाइस में सुरक्षित रहेगा।
                 </p>
                 
-                <label className={`cursor-pointer bg-gradient-to-r ${bgGradient} text-white px-6 py-3 rounded-xl shadow-[0_4px_16px_rgba(0,0,0,0.15)] inline-flex items-center gap-2 font-bold hover:scale-105 transition-transform`}>
-                  <span className="text-xl">📂</span>
-                  फाइलें चुनें
-                  <input 
-                    type="file" 
-                    multiple 
-                    accept=".txt,.json" 
-                    className="hidden" 
-                    onChange={(e) => handleFileUpload(e, selectedGita)} 
-                  />
-                </label>
+                <div className="flex justify-center flex-wrap gap-4 mt-4">
+                  <label className={`cursor-pointer bg-gradient-to-r ${bgGradient} text-white px-6 py-3 rounded-xl shadow-[0_4px_16px_rgba(0,0,0,0.15)] inline-flex items-center gap-2 font-bold hover:scale-105 transition-transform`}>
+                    <span className="text-xl">📂</span>
+                    फाइलें चुनें
+                    <input 
+                      type="file" 
+                      multiple 
+                      accept=".txt,.json" 
+                      className="hidden" 
+                      onChange={(e) => handleFileUpload(e, selectedGita)} 
+                    />
+                  </label>
+                  
+                  {book.chapters.length > 0 && (
+                    <button 
+                      onClick={(e) => handleClearData(e, book.id)}
+                      className="bg-white border-2 border-red-100 text-red-500 px-5 py-3 rounded-xl font-bold hover:bg-red-50 transition-colors flex items-center gap-2"
+                      title="इस ग्रंथ का सारा डेटा डिलीट करें"
+                    >
+                      🗑️ हटाएं
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </>
@@ -781,6 +948,14 @@
 
         const verseKey = `${book.id}|${chapter.id}|${verse.id}`;
         const isBookmarked = bookmarks.includes(verseKey);
+
+        // नया: यहाँ से सम्मिलित अर्थ का डेटा लिया जा रहा है
+        const meaningData = getDisplayMeaning(currentVerseIndex, chapter.verses);
+        const displayH = meaningData?.h || '';
+        const displayA = meaningData?.a || '';
+        const isCombined = meaningData?.isCombined;
+        const startId = meaningData?.startId;
+        const endId = meaningData?.endId;
 
         return (
           <>
@@ -822,25 +997,33 @@
                   {verse?.s || 'कोई मूल श्लोक नहीं मिला'}
                 </div>
                 
-                {verse?.h && (
+                {displayH && (
                   <div className="mb-6">
                     <div className={`text-[11px] sm:text-xs font-bold tracking-widest uppercase mb-2 flex items-center gap-2 ${primaryColor}`}>
-                      💡 सरल अर्थ
+                      💡 {isCombined ? `सम्मिलित अर्थ (श्लोक ${startId}-${endId})` : 'सरल अर्थ'}
                     </div>
                     <div className="text-sm sm:text-base leading-relaxed text-[#4a3860] bg-[#FFF3DC] rounded-xl p-4 sm:p-5">
-                      {verse.h}
+                      {displayH}
                     </div>
                   </div>
                 )}
 
-                {verse?.a && (
+                {displayA && (
                   <div>
                     <div className="text-[11px] sm:text-xs font-bold tracking-widest uppercase mb-2 flex items-center gap-2 text-[#059669]">
-                      🌿 जीवन में प्रयोग
+                      🌿 {isCombined ? `सम्मिलित प्रयोग (श्लोक ${startId}-${endId})` : 'जीवन में प्रयोग'}
                     </div>
                     <div className="text-sm sm:text-base leading-relaxed text-[#1a4a30] bg-[#d1fae5] rounded-xl p-4 sm:p-5 border border-[#10b981]/20">
-                      {verse.a}
+                      {displayA}
                     </div>
+                  </div>
+                )}
+
+                {/* अगर बिल्कुल भी अर्थ न मिले तो */}
+                {!displayH && !displayA && (
+                  <div className="mb-6 bg-[#FFF8EE] border border-[#FFB703]/30 rounded-xl p-5 text-center text-[#7a6890] shadow-sm flex flex-col items-center gap-3">
+                    <span className="text-3xl opacity-60 drop-shadow-sm">📜</span>
+                    <p className="text-sm font-medium">इस श्लोक का अर्थ फाइल में उपलब्ध नहीं है।</p>
                   </div>
                 )}
               </div>
