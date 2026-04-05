@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#7C3AED">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="आध्यात्मिक ग्रंथ">
+  <title>आध्यात्मिक ग्रंथ — सनातन ज्ञान</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel (JSX को HTML में चलाने के लिए) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Yatra+One&family=Noto+Sans+Devanagari:wght@300;400;500;600;700&family=Philosopher:ital,wght@0,400;0,700;1,400&display=swap');
+    .font-yatra { font-family: 'Yatra One', serif; }
+    .font-noto { font-family: 'Noto Sans Devanagari', sans-serif; }
+    .font-philo { font-family: 'Philosopher', serif; font-style: italic; }
+    body { background-color: #FFF8EE; font-family: 'Noto Sans Devanagari', sans-serif; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // हिंदी शब्दों को अंकों में बदलने का स्मार्ट सिस्टम
+    const hindiWordToNum = {
+      'प्रथम': 1, 'द्वितीय': 2, 'तृतीय': 3, 'चतुर्थ': 4, 'पंचम': 5, 
+      'षष्ठ': 6, 'सप्तम': 7, 'अष्टम': 8, 'नवम': 9, 'दशम': 10,
+      'एकादश': 11, 'द्वादश': 12
+    };
+
+    // सुपर स्मार्ट पार्सर - यह मुण्डक, तैत्तिरीय और ऋभु गीता के फॉर्मेट को आसानी से समझेगा
+    const parseGitaText = (text) => {
+      const chapters = [];
+      let currentChapter = null;
+      let currentVerse = null;
+      let currentSection = 's'; 
+      let expectingNewVerse = false; 
+
+      const toEngDigits = (str) => str ? str.replace(/[०-९]/g, d => '०१२३४५६७८९'.indexOf(d)) : '';
+
+      const lines = text.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i].replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+        line = line.replace(/^"|"$/g, '').trim(); 
+        
+        if (!line) {
+          if (currentVerse && (currentVerse.h || currentVerse.a || currentVerse.s)) {
+            expectingNewVerse = true;
+          }
+          continue;
+        }
+
+        // अध्याय के अंत की 'पुष्पिका' (ॐ तत्सदिति) को फालतू श्लोक न मानें
+        const isPushpika = line.includes('ॐ तत्सदिति') || 
+                           line.includes('श्रीमद्भगवद्गीतासूपनिषत्सु') || 
+                           line.includes('योगशास्त्रे श्रीकृष्णार्जुनसंवादे') || 
+                           line.match(/नाम\s+.*?ऽध्यायः/i) ||
+                           line.match(/^हरिः?\s*ॐ/i) ||
+                           line.match(/^अथ\s+.*?अध्यायः/i);
+                           
+        if (isPushpika) {
+            continue; 
+        }
+
+        const isChapterMatch = line.match(/^(?:अध्याय|प्रकरणम्|प्रकरण|शतक|सर्ग|खण्ड|ब्राह्मणम्|ब्राह्मण|वल्ली|मुण्डक|Chapter)(?:\s+|[\:\-\.\_]|$|(?=[०-९\d]))([०-९\d]+)?/i) || 
+                               line.match(/^(?:प्रथम|द्वितीय|तृतीय|चतुर्थ|पंचम|षष्ठ|सप्तम|अष्टम|नवम|दशम|एकादश|द्वादश)\s+(?:अध्याय|प्रकरण|खण्ड|ब्राह्मण|वल्ली|मुण्डक|प्रश्न)/i) ||
+                               line.match(/^.*?वल्ली\s*\(/i) ||
+                               line.match(/^.*?मुण्डक\s*\-/i);
+        
+        let verseNumStr = null;
+        let remainingVerseText = '';
+        
+        // जादुई फिक्स: '...' (सिर्फ डॉट्स) को श्लोक नंबर न माने, श्लोक नंबर में हमेशा अंक (Digit) होना अनिवार्य कर दिया गया है
+        const vMatch1 = line.match(/^(?:श्लोक|मंत्र|मन्त्र|Verse|श्लो\.|मं\.|प्रश्न|Mantra)\s*[\[\(\.]?\s*([०-९\d]+(?:\.[०-९\d]+)*)\s*[\]\)\.\:]?\s*(.*)/i);
+        const vMatch2 = line.match(/^[\[\(]\s*([०-९\d]+(?:\.[०-९\d]+)*)\s*[\]\)]\s*[\.\:\-\)]?\s*(.*)/);
+        const vMatch3 = line.match(/^([०-९\d]+(?:\.[०-९\d]+)*)\s*[\.\:\-\)]\s*(.*)/);
+        const vMatch4 = line.match(/^([०-९\d]+(?:\.[०-९\d]+)*)\s*$/); 
+        const vMatch5 = line.match(/^([०-९\d]+(?:\.[०-९\d]+)*)\s+(.*)/); 
+        
+        if (vMatch1) { verseNumStr = vMatch1[1]; remainingVerseText = vMatch1[2]; }
+        else if (vMatch2) { verseNumStr = vMatch2[1]; remainingVerseText = vMatch2[2]; }
+        else if (vMatch3) { verseNumStr = vMatch3[1]; remainingVerseText = vMatch3[2]; }
+        else if (vMatch4) { verseNumStr = vMatch4[1]; remainingVerseText = ''; }
+        else if (vMatch5) { verseNumStr = vMatch5[1]; remainingVerseText = vMatch5[2]; }
+
+        const isMeaningMatch = line.match(/^(?:सरल अर्थ|अर्थ|भावार्थ|अनुवाद|हिंदी अर्थ|हिन्दी अर्थ|तात्पर्य|व्याख्या|Meaning|Translation)\s*[\:\-\.]?\s*(.*)/i);
+        const isAppMatch = line.match(/^(?:जीवन में प्रयोग|जीवन प्रयोग|प्रयोग|संदेश|सीख|Application|Message)\s*[\:\-\.]?\s*(.*)/i);
+        
+        const isSanskritMatch = line.match(/^(?:श्लोक|संस्कृत|मूल)\s*[\:\-\.]\s*(.*)/i);
+
+        if (isChapterMatch && !isMeaningMatch && !isAppMatch && !verseNumStr && !isSanskritMatch) {
+          let chId = chapters.length + 1;
+          const chMatchNum = line.match(/(?:अध्याय|प्रकरण|शतक|सर्ग|खण्ड|ब्राह्मणम्|ब्राह्मण|वल्ली|मुण्डक|Chapter)\s*([०-९\d]+)/i);
+          
+          if (chMatchNum && chMatchNum[1]) {
+            chId = parseInt(toEngDigits(chMatchNum[1]));
+          } else {
+            const matchText = line.toLowerCase();
+            for (const [word, num] of Object.entries(hindiWordToNum)) {
+              if (matchText.includes(word)) { chId = num; break; }
+            }
+          }
+
+          if (currentChapter && currentChapter.id === chId) {
+            continue; 
+          }
+
+          if (currentChapter && currentChapter.title.includes(line)) continue;
+
+          if (currentChapter) {
+            if (currentVerse && (currentVerse.s || currentVerse.h || currentVerse.a)) {
+              currentChapter.verses.push(currentVerse);
+            }
+            if (currentChapter.verses.length > 0) {
+              chapters.push(currentChapter);
+            }
+          }
+
+          currentChapter = {
+            id: chId,
+            title: line.replace(/\\n/g, '').replace(/["']/g, ''),
+            verses: []
+          };
+          currentVerse = null;
+          currentSection = 's';
+        } 
+        else if (verseNumStr && !isMeaningMatch && !isAppMatch && !isSanskritMatch) {
+          
+          if (currentVerse && (currentVerse.h || currentVerse.a)) {
+             let isListItem = false;
+             const parsedNum = parseInt(toEngDigits(verseNumStr)) || 0;
+             const currentIdNum = parseInt(currentVerse.id) || 0;
+             
+             if (!line.match(/^(?:श्लोक|मंत्र|मन्त्र|Verse|श्लो\.|मं\.|प्रश्न)/i)) {
+                 if (vMatch2 || vMatch3 || vMatch5) {
+                     if (parsedNum < currentIdNum || parsedNum > currentIdNum + 2) {
+                         isListItem = true;
+                     }
+                     if (!expectingNewVerse) {
+                         isListItem = true;
+                     }
+                 }
+             }
+             
+             if (isListItem) {
+                 if (currentSection === 'a') currentVerse.a += '\n' + line;
+                 else if (currentSection === 'h') currentVerse.h += '\n' + line;
+                 else currentVerse.s += '\n' + line;
+                 continue;
+             }
+          }
+
+          if (!currentChapter) currentChapter = { id: 1, title: 'अध्याय 1', verses: [] };
+
+          if (currentVerse && (currentVerse.s || currentVerse.h || currentVerse.a)) {
+            currentChapter.verses.push(currentVerse);
+          }
+          
+          currentVerse = {
+            id: toEngDigits(verseNumStr).replace(/[\.\:\-]$/, ''), 
+            s: remainingVerseText, 
+            h: '', 
+            a: ''
+          };
+          currentSection = 's';
+        } 
+        else if (isMeaningMatch) {
+          if (!currentChapter) currentChapter = { id: 1, title: 'अध्याय 1', verses: [] };
+          if (!currentVerse) currentVerse = { id: 1, s: '', h: '', a: '' };
+          
+          currentSection = 'h';
+          expectingNewVerse = false;
+          if (isMeaningMatch[1]) currentVerse.h += (currentVerse.h ? '\n' : '') + isMeaningMatch[1];
+        } 
+        else if (isAppMatch) {
+          if (!currentChapter) currentChapter = { id: 1, title: 'अध्याय 1', verses: [] };
+          if (!currentVerse) currentVerse = { id: 1, s: '', h: '', a: '' };
+          
+          currentSection = 'a';
+          expectingNewVerse = false;
+          if (isAppMatch[1]) currentVerse.a += (currentVerse.a ? '\n' : '') + isAppMatch[1];
+        } 
+        else if (isSanskritMatch && currentVerse) {
+          currentSection = 's';
+          if (isSanskritMatch[1]) currentVerse.s += (currentVerse.s ? '\n' : '') + isSanskritMatch[1];
+        }
+        else {
+          if (!currentChapter) currentChapter = { id: 1, title: 'अध्याय 1', verses: [] };
+          if (!currentVerse) currentVerse = { id: 1, s: '', h: '', a: '' };
+          
+          let forceNewVerse = false;
+          if (expectingNewVerse && currentVerse) {
+            const sEndsWithMarker = currentVerse.s && /(?:॥|\|\|)$/.test(currentVerse.s.trim());
+            
+            // जादुई फिक्स: अगर बिना हेडिंग के सीधा अर्थ आ जाए, तो उसे नया श्लोक न मानें
+            if (sEndsWithMarker && !currentVerse.h && !currentVerse.a && currentSection === 's') {
+                currentSection = 'h'; 
+            } else if (currentVerse.h || currentVerse.a || sEndsWithMarker) {
+                forceNewVerse = true;
+            }
+          }
+
+          if (forceNewVerse) {
+            if (currentVerse.s || currentVerse.h || currentVerse.a) currentChapter.verses.push(currentVerse);
+            currentVerse = { id: currentChapter.verses.length + 1, s: line, h: '', a: '' };
+            currentSection = 's';
+            expectingNewVerse = false;
+          } 
+          else {
+             const isOnlyDandaNum = line.match(/^(?:॥|\|\|)\s*[०-९\d]+\s*(?:॥|\|\|)$/);
+             const isSanskritFinished = /(?:॥|\|\|)/.test(currentVerse.s);
+             
+             // नया जादुई फिक्स: अगर श्लोक (॥) खत्म हो गया है और कोई हेडिंग नहीं है, तो अगला टेक्स्ट अर्थ (h) में जाएगा
+             if (currentSection === 's' && isSanskritFinished && !isOnlyDandaNum) {
+                 currentSection = 'h';
+             }
+
+             if (currentSection === 'h') {
+               currentVerse.h += (currentVerse.h ? '\n' : '') + line;
+             } 
+             else if (currentSection === 'a') {
+               currentVerse.a += (currentVerse.a ? '\n' : '') + line;
+             } 
+             else {
+               currentVerse.s += (currentVerse.s ? '\n' : '') + line;
+             }
+          }
+          
+          if (currentVerse && !currentVerse.h && !currentVerse.a) {
+            const endNumMatch = line.match(/(?:॥|\|\|)\s*([०-९\d]+)\s*(?:॥|\|\|)$/);
+            if (endNumMatch) {
+              currentVerse.id = parseInt(toEngDigits(endNumMatch[1]));
+              expectingNewVerse = true;
+            }
+          }
+        }
+      }
+      
+      if (currentVerse && (currentVerse.s || currentVerse.h || currentVerse.a)) {
+        if (!currentChapter) currentChapter = { id: 1, title: 'अध्याय 1', verses: [] };
+        currentChapter.verses.push(currentVerse);
+      }
+      if (currentChapter && currentChapter.verses.length > 0) chapters.push(currentChapter);
+
+      return chapters;
+    };
+
+    const normalizeJSONChapters = (chaptersArr, startIndex = 0) => {
+      return chaptersArr.map((ch, idx) => {
+        const versesArr = ch.verses || ch.mantras || ch.slokas || ch.shlokas || [];
+        return {
+          id: ch.id || ch.chapter || ch.chapter_number || (startIndex + idx + 1),
+          title: ch.title || ch.name || ch.chapter_name || `अध्याय ${startIndex + idx + 1}`,
+          verses: versesArr.map((v, i) => {
+            const getVal = (keys) => {
+              for (let k of keys) {
+                const match = Object.keys(v).find(vk => vk.toLowerCase() === k.toLowerCase());
+                if (match && v[match]) return String(v[match]);
+              }
+              return '';
+            };
+            return {
+              id: v.id || v.verse || v.verse_number || v.mantra || v.श्लोक || v.मन्त्र || v.प्रश्न || (i + 1),
+              s: getVal(['s', 'text', 'sanskrit', 'shloka', 'mantra', 'sloka', 'verseText', 'content', 'संस्कृत', 'मूल', 'मंत्र', 'मन्त्र', 'श्लोक', 'प्रश्न']),
+              h: getVal(['h', 'meaning', 'arth', 'translation', 'hindi', 'hindi_arth', 'भावार्थ', 'अनुवाद', 'अर्थ', 'सरल_अर्थ', 'सरल अर्थ', 'हिन्दी अर्थ']),
+              a: getVal(['a', 'app', 'prayog', 'application', 'message', 'सीख', 'संदेश', 'जीवन_प्रयोग', 'जीवन प्रयोग', 'प्रयोग'])
+            };
+          })
+        };
+      });
+    };
+
+    const GITA_DATA = {
+      bhagavad: { id: 'bhagavad', title: 'भगवद्गीता', subtitle: 'श्री कृष्ण द्वारा अर्जुन को कुरुक्षेत्र में दिया दिव्य उपदेश', icon: '🏹', category: 'gita' },
+      ashtavakra: { id: 'ashtavakra', title: 'अष्टावक्र गीता', subtitle: 'राजा जनक व ऋषि अष्टावक्र का महान अद्वैत संवाद', icon: '🧘', category: 'gita' },
+      ribhu: { id: 'ribhu', title: 'ऋभु गीता', subtitle: 'शिव रहस्य — आत्म-ज्ञान का सर्वोच्च शिखर', icon: '🕉️', category: 'gita' },
+      
+      katha: { id: 'katha', title: 'कठोपनिषद (यजुर्वेद)', subtitle: 'नचिकेता और यमराज का परम संवाद', icon: '🔥', category: 'upanishad' },
+      kena: { id: 'kena', title: 'केनोपनिषद (सामवेद)', subtitle: 'परब्रह्म का स्वरूप और देवों का गर्व-हरण', icon: '✨', category: 'upanishad' },
+      isha: { id: 'isha', title: 'ईशावास्योपनिषद (यजुर्वेद)', subtitle: 'ईश्वर की सर्वव्यापकता', icon: '👁️', category: 'upanishad' },
+      mundaka: { id: 'mundaka', title: 'मुण्डकोपनिषद (अथर्ववेद)', subtitle: 'सत्यमेव जयते का मूल स्रोत', icon: '🎯', category: 'upanishad' },
+      mandukya: { id: 'mandukya', title: 'माण्डूक्योपनिषद (अथर्ववेद)', subtitle: 'ॐकार (A-U-M) का गहरा रहस्य', icon: '📿', category: 'upanishad' },
+      chandogya: { id: 'chandogya', title: 'छान्दोग्योपनिषद (सामवेद)', subtitle: 'तत्त्वमसि महावाक्य और सामवेद का सार', icon: '🎵', category: 'upanishad' },
+      aitareya: { id: 'aitareya', title: 'ऐतरेयोपनिषद (ऋग्वेद)', subtitle: 'प्रज्ञानं ब्रह्म और सृष्टि की उत्पत्ति', icon: '🧠', category: 'upanishad' },
+      taittiriya: { id: 'taittiriya', title: 'तैत्तिरीयोपनिषद (यजुर्वेद)', subtitle: 'पंचकोश विवेक और आनन्दमीमांसा', icon: '🌾', category: 'upanishad' },
+      shvetashvatara: { id: 'shvetashvatara', title: 'श्वेताश्वतरोपनिषद (यजुर्वेद)', subtitle: 'ध्यान, योग और रुद्र का स्वरूप', icon: '🧘‍♂️', category: 'upanishad' },
+      brihadaranyaka: { id: 'brihadaranyaka', title: 'बृहदारण्यकोपनिषद (यजुर्वेद)', subtitle: 'अहं ब्रह्मास्मि (मैं ब्रह्म हूँ)', icon: '🌌', category: 'upanishad' },
+      prashna: { id: 'prashna', title: 'प्रश्नोपनिषद (अथर्ववेद)', subtitle: 'छह ऋषियों के महर्षि पिप्पलाद से प्रश्न', icon: '❓', category: 'upanishad' }
+    };
+
+    function App() {
+      const [currentView, setCurrentView] = useState('home');
+      const [selectedGita, setSelectedGita] = useState(null);
+      const [selectedChapter, setSelectedChapter] = useState(null);
+      const [currentVerseIndex, setCurrentVerseIndex] = useState(0); 
+      
+      const initialChaptersState = Object.keys(GITA_DATA).reduce((acc, key) => ({ ...acc, [key]: [] }), {});
+      const [allGitaChapters, setAllGitaChapters] = useState(initialChaptersState);
+      
+      const [bookmarks, setBookmarks] = useState([]);
+      const [toastMessage, setToastMessage] = useState('');
+      const [showInstallGuide, setShowInstallGuide] = useState(false);
+
+      useEffect(() => {
+        try {
+          const savedData = localStorage.getItem('gita_offline_data');
+          if (savedData) {
+            const parsed = JSON.parse(savedData);
+            setAllGitaChapters(prev => ({ ...prev, ...parsed }));
+          }
+          
+          const savedBookmarks = localStorage.getItem('gita_bookmarks');
+          if (savedBookmarks) {
+            setBookmarks(JSON.parse(savedBookmarks));
+          }
+        } catch (error) {
+          console.error("Local Storage Error:", error);
+        }
+      }, []);
+
+      useEffect(() => {
+        try {
+          localStorage.setItem('gita_bookmarks', JSON.stringify(bookmarks));
+        } catch (error) {}
+      }, [bookmarks]);
+
+      const DYNAMIC_GITA_DATA = Object.keys(GITA_DATA).reduce((acc, key) => {
+        acc[key] = { ...GITA_DATA[key], chapters: allGitaChapters[key] || [] };
+        return acc;
+      }, {});
+
+      const getTotalStats = () => {
+        let tChap = 0;
+        let tVerse = 0;
+        Object.values(DYNAMIC_GITA_DATA).forEach(gita => {
+          tChap += gita.chapters.length;
+          gita.chapters.forEach(ch => {
+            tVerse += ch.verses.length;
+          });
+        });
+        return { tChap, tVerse, totalBooks: Object.keys(DYNAMIC_GITA_DATA).length };
+      };
+      const { tChap, tVerse, totalBooks } = getTotalStats();
+
+      // नया जादुई फंक्शन: जो खाली श्लोकों के लिए आगे वाले श्लोक से सम्मिलित अर्थ ढूँढ लाएगा
+      const getDisplayMeaning = (currentIndex, verses) => {
+          if (!verses || !verses[currentIndex]) return null;
+          let current = verses[currentIndex];
+          
+          if (!current.h && !current.a) {
+              let nextIndex = -1;
+              for (let i = currentIndex + 1; i < verses.length; i++) {
+                  if (verses[i].h || verses[i].a) {
+                      nextIndex = i;
+                      break;
+                  }
+              }
+              if (nextIndex !== -1) {
+                  let startIndex = currentIndex;
+                  while (startIndex > 0 && !verses[startIndex - 1].h && !verses[startIndex - 1].a) {
+                      startIndex--;
+                  }
+                  return {
+                      isCombined: true,
+                      startId: verses[startIndex].id,
+                      endId: verses[nextIndex].id,
+                      h: verses[nextIndex].h,
+                      a: verses[nextIndex].a
+                  };
+              }
+          } else {
+              if (currentIndex > 0 && !verses[currentIndex - 1].h && !verses[currentIndex - 1].a) {
+                  let startIndex = currentIndex - 1;
+                  while (startIndex > 0 && !verses[startIndex - 1].h && !verses[startIndex - 1].a) {
+                      startIndex--;
+                  }
+                  return {
+                      isCombined: true,
+                      startId: verses[startIndex].id,
+                      endId: verses[currentIndex].id,
+                      h: current.h,
+                      a: current.a
+                  };
+              }
+          }
+          return {
+              isCombined: false,
+              h: current.h || '',
+              a: current.a || ''
+          };
+      };
+
+      const toggleBookmark = (bookId, chId, vId) => {
+        const key = `${bookId}|${chId}|${vId}`;
+        setBookmarks(prev => {
+          if (prev.includes(key)) {
+            setToastMessage('बुकमार्क से हटा दिया गया');
+            setTimeout(() => setToastMessage(''), 2000);
+            return prev.filter(k => k !== key);
+          } else {
+            setToastMessage('बुकमार्क में सहेज लिया गया! ⭐');
+            setTimeout(() => setToastMessage(''), 2000);
+            return [...prev, key];
+          }
+        });
+      };
+
+      const handleClearData = (e, gitaId) => {
+        e.stopPropagation();
+        if(window.confirm('क्या आप इस ग्रंथ का सारा सहेजा गया डेटा हटाना चाहते हैं?')) {
+           setAllGitaChapters(prev => {
+              const updated = {...prev, [gitaId]: []};
+              localStorage.setItem('gita_offline_data', JSON.stringify(updated));
+              return updated;
+           });
+           setToastMessage('डेटा सफलतापूर्वक हटा दिया गया।');
+           setTimeout(() => setToastMessage(''), 3000);
+        }
+      };
+
+      const handleFileUpload = async (event, gitaId) => {
+        const files = event.target.files;
+        if (!files || files.length === 0) return;
+
+        setToastMessage('फाइलें पढ़ी जा रही हैं...');
+
+        let newChapters = [];
+        let allText = "";
+
+        for (let file of files) {
+          let text = await file.text();
+          let parsedAsJson = false;
+          
+          try {
+            const json = JSON.parse(text);
+            const existingChapCount = (allGitaChapters[gitaId] || []).length + newChapters.length;
+            
+            if (Array.isArray(json) && json.length > 0) {
+              if (json[0].verses || json[0].title || json[0].name || json[0].chapter) {
+                 newChapters = [...newChapters, ...normalizeJSONChapters(json, existingChapCount)];
+                 parsedAsJson = true;
+              } else if (json[0].s || json[0].h || json[0].text || json[0].shloka || json[0].sanskrit || json[0].verse_number) {
+                 newChapters.push(normalizeJSONChapters([{ verses: json }], existingChapCount)[0]);
+                 parsedAsJson = true;
+              } else if (typeof json[0] === 'string') {
+                 newChapters.push({
+                   id: existingChapCount + 1,
+                   title: `अध्याय ${existingChapCount + 1}`,
+                   verses: json.map((v, i) => ({ id: i + 1, s: v, h: '', a: '' }))
+                 });
+                 parsedAsJson = true;
+              }
+            } else if (json && typeof json === 'object') {
+              if (json.chapters) {
+                newChapters = [...newChapters, ...normalizeJSONChapters(json.chapters, existingChapCount)];
+                parsedAsJson = true;
+              } else if (json.verses) {
+                newChapters.push(normalizeJSONChapters([json], existingChapCount)[0]);
+                parsedAsJson = true;
+              }
+            }
+          } catch (e) {}
+
+          if (!parsedAsJson) {
+            text = text.replace(/\\n/g, '\n').replace(/\\r/g, '\r');
+            let parsedTextChapters = parseGitaText(text);
+            
+            const numInFile = file.name.match(/\d+/);
+            if (parsedTextChapters.length === 1 && parsedTextChapters[0].id === 1 && numInFile && numInFile[0] !== "1") {
+                if (!text.includes('अध्याय 1') && !text.includes('प्रथम')) {
+                    const correctId = parseInt(numInFile[0]);
+                    parsedTextChapters[0].id = correctId;
+                    parsedTextChapters[0].title = `अध्याय ${correctId}`;
+                }
+            }
+            newChapters = [...newChapters, ...parsedTextChapters];
+          }
+        }
+        
+        newChapters = newChapters.filter(ch => ch.verses && ch.verses.length > 0);
+
+        if (newChapters.length > 0) {
+          setAllGitaChapters(prev => {
+            const currentBookChapters = prev[gitaId] || [];
+            const combined = [...currentBookChapters, ...newChapters];
+            
+            const chapterMap = new Map();
+            for (const ch of combined) {
+              if (chapterMap.has(ch.id)) {
+                 const existingCh = chapterMap.get(ch.id);
+                 const combinedVerses = [...existingCh.verses, ...ch.verses];
+                 const uniqueVerses = Array.from(new Map(combinedVerses.map(v => [v.id, v])).values());
+                 uniqueVerses.sort((a,b) => a.id - b.id);
+                 existingCh.verses = uniqueVerses;
+                 chapterMap.set(ch.id, existingCh);
+              } else {
+                 chapterMap.set(ch.id, { ...ch });
+              }
+            }
+            
+            const finalChapters = Array.from(chapterMap.values()).sort((a, b) => a.id - b.id);
+            const updatedAllChapters = { ...prev, [gitaId]: finalChapters };
+
+            try {
+              localStorage.setItem('gita_offline_data', JSON.stringify(updatedAllChapters));
+              setToastMessage(`सफलतापूर्वक डेटा सुरक्षित हो गया!`);
+            } catch (error) {
+              setToastMessage('स्टोरेज फुल हो गया है। कृपया कुछ डेटा डिलीट करें!');
+            }
+
+            return updatedAllChapters;
+          });
+          
+          setTimeout(() => setToastMessage(''), 4000);
+        } else {
+          setToastMessage('फाइल में कोई सही श्लोक या डेटा नहीं मिला।');
+          setTimeout(() => setToastMessage(''), 4000);
+        }
+        
+        event.target.value = '';
+      };
+
+      const [isPlaying, setIsPlaying] = useState(false);
+
+      const speakText = (text) => {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = 'hi-IN'; 
+          utterance.rate = 0.85; 
+          utterance.onend = () => setIsPlaying(false);
+          window.speechSynthesis.speak(utterance);
+          setIsPlaying(true);
+        } else {
+          alert("आपके ब्राउज़र में आवाज़ का सपोर्ट नहीं है।");
+        }
+      };
+
+      const stopSpeaking = () => {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          setIsPlaying(false);
+        }
+      };
+
+      const togglePlay = () => {
+        if (isPlaying) {
+          stopSpeaking();
+        } else {
+          const chapter = selectedChapter;
+          if (!chapter || !chapter.verses || chapter.verses.length === 0) return;
+          const verse = chapter.verses[currentVerseIndex];
+          if (!verse) return;
+
+          // स्मार्ट मीनिंग डिटेक्टर का उपयोग करें
+          const meaningData = getDisplayMeaning(currentVerseIndex, chapter.verses);
+          const v_h = meaningData?.h || '';
+          const v_a = meaningData?.a || '';
+
+          let textToSpeak = '';
+          if (v_h) textToSpeak += `इसका अर्थ है ... ${v_h} `;
+          if (v_a) textToSpeak += `${v_h ? '... ' : ''}जीवन में प्रयोग ... ${v_a}`;
+          
+          if (!textToSpeak.trim() || textToSpeak === 'undefined') {
+            textToSpeak = "इस श्लोक का अर्थ फाइल में उपलब्ध नहीं है।";
+          }
+          
+          speakText(textToSpeak);
+        }
+      };
+
+      const handleNextVerse = () => {
+        if (selectedChapter && currentVerseIndex < selectedChapter.verses.length - 1) {
+          setCurrentVerseIndex(prev => prev + 1);
+          stopSpeaking();
+        }
+      };
+
+      const handlePrevVerse = () => {
+        if (currentVerseIndex > 0) {
+          setCurrentVerseIndex(prev => prev - 1);
+          stopSpeaking();
+        }
+      };
+
+      useEffect(() => {
+        stopSpeaking();
+      }, [currentView, currentVerseIndex]);
+
+      const renderHome = () => {
+        const gitas = Object.values(DYNAMIC_GITA_DATA).filter(g => g.category === 'gita');
+        const upanishads = Object.values(DYNAMIC_GITA_DATA).filter(g => g.category === 'upanishad');
+
+        return (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto px-4 pb-24 pt-6">
+            <div className="text-center py-8 relative">
+              <span className="text-7xl block mb-4 animate-bounce drop-shadow-lg">🙏</span>
+              <h1 className="font-yatra text-4xl sm:text-5xl text-[#1a0a2e] leading-tight mb-3">
+                स्वागत है <span className="text-[#E85D04]">आत्म-ज्ञान की</span> यात्रा में
+              </h1>
+              <p className="text-[#7a6890] max-w-md mx-auto leading-relaxed">
+                महान गीताओं और उपनिषदों का सम्पूर्ण ज्ञान — संस्कृत श्लोक, सरल अर्थ और जीवन प्रयोग सहित
+              </p>
+              <p className="text-xs font-bold text-[#059669] bg-[#d1fae5] inline-flex items-center gap-2 px-4 py-2 rounded-full mt-4 shadow-sm border border-[#10b981]/20">
+                <span className="text-sm">💾</span> 100% ऑफ़लाइन सुरक्षित
+              </p>
+            </div>
+
+            <div className="flex justify-center gap-6 sm:gap-10 mb-8 p-5 bg-[#1a0a2e] rounded-3xl shadow-[0_8px_40px_rgba(60,20,100,0.18)] text-center transform transition hover:scale-[1.02] overflow-hidden">
+              <div>
+                <span className="font-philo text-3xl font-bold text-[#FFB703] block">{totalBooks}</span>
+                <span className="text-xs text-white/60 mt-1 block">ग्रंथ</span>
+              </div>
+              <div>
+                <span className="font-philo text-3xl font-bold text-[#FFB703] block">{tChap}</span>
+                <span className="text-xs text-white/60 mt-1 block">अध्याय</span>
+              </div>
+              <div>
+                <span className="font-philo text-3xl font-bold text-[#FFB703] block">{tVerse.toLocaleString('hi')}</span>
+                <span className="text-xs text-white/60 mt-1 block">श्लोक/मंत्र</span>
+              </div>
+              <div>
+                <span className="font-philo text-3xl font-bold text-[#FFB703] block">∞</span>
+                <span className="text-xs text-white/60 mt-1 block">ज्ञान</span>
+              </div>
+            </div>
+
+            <div className="flex justify-center mb-12">
+              <button 
+                onClick={() => setCurrentView('bookmarks')}
+                className="bg-gradient-to-r from-[#FFB703] to-[#E85D04] text-white px-8 py-3.5 rounded-2xl shadow-[0_4px_16px_rgba(232,93,4,0.3)] hover:scale-105 transition-transform flex items-center gap-3 font-bold text-lg border border-white/20"
+              >
+                <span className="text-2xl drop-shadow-sm">🔖</span>
+                मेरे सहेजे गए श्लोक ({bookmarks.length})
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#E85D04] to-[#FFB703] flex items-center justify-center text-2xl text-white shadow-[0_4px_12px_rgba(232,93,4,0.35)]">📜</div>
+              <h2 className="font-yatra text-2xl sm:text-3xl text-[#1a0a2e]">गीताएँ</h2>
+              <span className="ml-auto bg-[#1a0a2e] text-[#FFB703] px-4 py-1.5 rounded-full text-xs font-bold">{gitas.length}</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+              {gitas.map((gita, index) => {
+                let vCount = 0;
+                gita.chapters.forEach(ch => vCount += ch.verses.length);
+                
+                return (
+                  <button
+                    key={`gita-btn-${gita.id}-${index}`}
+                    onClick={() => {
+                      setSelectedGita(gita.id);
+                      setCurrentView('chapters');
+                    }}
+                    className="group bg-white rounded-3xl p-6 shadow-[0_4px_24px_rgba(60,20,100,0.06)] hover:shadow-[0_8px_40px_rgba(60,20,100,0.12)] transition-all text-left relative overflow-hidden border-2 border-transparent hover:border-[#E85D04]/20 hover:-translate-y-1"
+                  >
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-[#E85D04] via-[#FFB703] to-[#E85D04] transform scale-x-0 origin-left transition-transform duration-300 group-hover:scale-x-100" />
+                    <span className="text-4xl sm:text-5xl block mb-4">{gita.icon}</span>
+                    <h3 className="font-yatra text-xl sm:text-2xl text-[#1a0a2e] mb-2">{gita.title}</h3>
+                    <p className="text-sm text-[#7a6890] mb-5 leading-relaxed">{gita.subtitle}</p>
+                    <div className="flex gap-2 text-xs text-[#7a6890]">
+                      <span className="bg-[#FFF3DC] px-3 py-1.5 rounded-full flex items-center gap-1 font-medium text-[#1a0a2e]">
+                        📖 {gita.chapters.length} अध्याय
+                      </span>
+                      <span className="bg-[#FFF3DC] px-3 py-1.5 rounded-full flex items-center gap-1 font-medium text-[#1a0a2e]">
+                        ✨ {vCount.toLocaleString('hi')} श्लोक
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#059669] to-[#10b981] flex items-center justify-center text-2xl text-white shadow-[0_4px_12px_rgba(5,150,105,0.35)]">🪔</div>
+              <h2 className="font-yatra text-2xl sm:text-3xl text-[#1a0a2e]">उपनिषद</h2>
+              <span className="ml-auto bg-[#1a0a2e] text-[#FFB703] px-4 py-1.5 rounded-full text-xs font-bold">{upanishads.length}</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {upanishads.map((upanishad, index) => {
+                let vCount = 0;
+                upanishad.chapters.forEach(ch => vCount += ch.verses.length);
+                
+                return (
+                  <button
+                    key={`upanishad-btn-${upanishad.id}-${index}`}
+                    onClick={() => {
+                      setSelectedGita(upanishad.id);
+                      setCurrentView('chapters');
+                    }}
+                    className="group bg-white rounded-3xl p-6 shadow-[0_4px_24px_rgba(60,20,100,0.06)] hover:shadow-[0_8px_40px_rgba(60,20,100,0.12)] transition-all text-left relative overflow-hidden border-2 border-transparent hover:border-[#059669]/20 hover:-translate-y-1"
+                  >
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-[#059669] via-[#34d399] to-[#059669] transform scale-x-0 origin-left transition-transform duration-300 group-hover:scale-x-100" />
+                    <span className="text-4xl sm:text-5xl block mb-4">{upanishad.icon}</span>
+                    <h3 className="font-yatra text-xl sm:text-2xl text-[#1a0a2e] mb-2">{upanishad.title}</h3>
+                    <p className="text-sm text-[#7a6890] mb-5 leading-relaxed">{upanishad.subtitle}</p>
+                    <div className="flex gap-2 text-xs text-[#7a6890]">
+                      <span className="bg-[#d1fae5] px-3 py-1.5 rounded-full flex items-center gap-1 font-medium text-[#1a0a2e]">
+                        📖 {upanishad.chapters.length} अध्याय/खण्ड
+                      </span>
+                      <span className="bg-[#d1fae5] px-3 py-1.5 rounded-full flex items-center gap-1 font-medium text-[#1a0a2e]">
+                        ✨ {vCount.toLocaleString('hi')} मंत्र
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+          </div>
+        );
+      };
+
+      const renderBookmarks = () => {
+        const bookmarkedItems = bookmarks.map(bKey => {
+          const parts = bKey.split('|');
+          if(parts.length !== 3) return null;
+          const [bookId, chId, vId] = parts;
+          
+          const book = DYNAMIC_GITA_DATA[bookId];
+          if(!book) return null;
+          
+          const chapter = book.chapters.find(c => String(c.id) === String(chId));
+          if(!chapter) return null;
+          
+          const verseIndex = chapter.verses.findIndex(v => String(v.id) === String(vId));
+          const verse = chapter.verses[verseIndex];
+          if(!verse) return null;
+          
+          return { key: bKey, book, chapter, verse, verseIndex };
+        }).filter(item => item !== null).reverse(); 
+
+        return (
+          <>
+            <div className="sticky top-[64px] z-40 bg-[#FFF8EE]/95 backdrop-blur-md border-b border-[#e8dff5] shadow-sm w-full">
+              <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+                <button 
+                  onClick={() => setCurrentView('home')}
+                  className="inline-flex items-center gap-2 bg-[#1a0a2e] text-[#FFB703] border-none px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl cursor-pointer text-xs sm:text-sm font-bold hover:bg-[#2d1b4e] transition-colors shadow-sm"
+                >
+                  ← वापस
+                </button>
+                <div className="text-[#1a0a2e] text-sm sm:text-base font-bold truncate flex items-center gap-2">
+                  <span className="text-xl">🔖</span> मेरे सहेजे गए श्लोक
+                </div>
+              </div>
+            </div>
+
+            <div className="animate-in fade-in slide-in-from-right-4 duration-300 max-w-3xl mx-auto px-4 pb-24 pt-6">
+              {bookmarkedItems.length === 0 ? (
+                <div className="text-center py-16 px-6 bg-white rounded-3xl shadow-sm border border-[#e8dff5] mt-10">
+                  <span className="text-6xl block mb-4 opacity-30">⭐</span>
+                  <h3 className="font-yatra text-2xl text-[#2d1b4e] mb-2">कोई बुकमार्क नहीं</h3>
+                  <p className="text-[#7a6890] text-sm sm:text-base">
+                    पढ़ते समय किसी भी श्लोक के तारे (⭐) पर क्लिक करके उसे यहाँ सहेजें।
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-4">
+                  {bookmarkedItems.map((item, idx) => (
+                    <div key={`bm-${idx}`} className="bg-white p-5 rounded-2xl shadow-sm border border-[#e8dff5] hover:shadow-md transition-shadow relative group">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">{item.book.icon}</span>
+                          <div>
+                            <div className="text-xs text-[#7a6890] font-bold">{item.book.title}</div>
+                            <div className="text-[10px] text-[#E85D04] uppercase tracking-wider">{item.chapter.title}</div>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleBookmark(item.book.id, item.chapter.id, item.verse.id);
+                          }}
+                          className="text-2xl text-[#FFB703] hover:scale-110 transition-transform active:scale-95"
+                          title="बुकमार्क हटाएं"
+                        >
+                          ⭐
+                        </button>
+                      </div>
+                      
+                      <div className="font-philo text-lg text-[#1a0a2e] mb-4 bg-[#FFFBF0] p-3 rounded-xl border-l-4 border-[#FFB703] line-clamp-3">
+                        {item.verse.s || item.verse.h || item.verse.a}
+                      </div>
+                      
+                      <button 
+                        onClick={() => {
+                          setSelectedGita(item.book.id);
+                          setSelectedChapter(item.chapter);
+                          setCurrentVerseIndex(item.verseIndex);
+                          setCurrentView('player');
+                        }}
+                        className="w-full bg-[#FFF3DC] hover:bg-[#FFB703] hover:text-[#1a0a2e] text-[#E85D04] font-bold py-2.5 rounded-xl transition-colors text-sm flex justify-center items-center gap-2"
+                      >
+                        पूरा पढ़ें <span>→</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        );
+      };
+
+      const renderChapters = () => {
+        const book = DYNAMIC_GITA_DATA[selectedGita];
+        let vCount = 0;
+        book.chapters.forEach(ch => vCount += ch.verses.length);
+        
+        const isUpanishad = book.category === 'upanishad';
+        const primaryColor = isUpanishad ? 'text-[#059669]' : 'text-[#E85D04]';
+        const bgGradient = isUpanishad ? 'from-[#059669] to-[#047857]' : 'from-[#E85D04] to-[#FFB703]';
+        const hoverBorder = isUpanishad ? 'hover:border-[#059669]' : 'hover:border-[#E85D04]';
+
+        return (
+          <>
+            <div className="sticky top-[64px] z-40 bg-[#FFF8EE]/95 backdrop-blur-md border-b border-[#e8dff5] shadow-sm w-full">
+              <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+                <button 
+                  onClick={() => setCurrentView('home')}
+                  className="inline-flex items-center gap-2 bg-[#1a0a2e] text-[#FFB703] border-none px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl cursor-pointer text-xs sm:text-sm font-bold hover:bg-[#2d1b4e] transition-colors shadow-sm"
+                >
+                  ← वापस
+                </button>
+                <div className="text-[#7a6890] text-xs sm:text-sm font-medium truncate">
+                  होम <span className={`mx-1 ${primaryColor}`}>/</span> <strong className="text-[#1a0a2e]">{book.title}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="animate-in fade-in slide-in-from-right-4 duration-300 max-w-3xl mx-auto px-4 pb-24 pt-6">
+              <div className="bg-gradient-to-br from-[#1a0a2e] to-[#3d2460] rounded-3xl p-6 sm:p-8 mb-8 flex flex-col sm:flex-row items-center sm:items-start gap-5 shadow-[0_8px_40px_rgba(60,20,100,0.18)] text-white text-center sm:text-left">
+                <div className="text-6xl sm:text-7xl">{book.icon}</div>
+                <div>
+                  <h2 className="font-yatra text-3xl sm:text-4xl text-[#FFB703] mb-2">{book.title}</h2>
+                  <p className="text-sm sm:text-base text-white/70 leading-relaxed max-w-md">{book.subtitle}</p>
+                  <div className="mt-4 flex flex-wrap justify-center sm:justify-start gap-3">
+                    <span className="bg-white/10 px-4 py-1.5 rounded-full text-sm text-white/90 font-medium border border-white/5">📖 {book.chapters.length} अध्याय</span>
+                    <span className="bg-white/10 px-4 py-1.5 rounded-full text-sm text-white/90 font-medium border border-white/5">✨ {vCount.toLocaleString('hi')} श्लोक/मंत्र</span>
+                  </div>
+                </div>
+              </div>
+
+              <h3 className="font-yatra text-2xl text-[#2d1b4e] mb-4 pl-2">अध्याय सूची</h3>
+              
+              {book.chapters.length === 0 ? (
+                <div className="text-center py-12 px-6 bg-white rounded-3xl shadow-sm mb-6 border border-[#e8dff5]">
+                  <span className="text-5xl block mb-4 opacity-30">📜</span>
+                  <p className="text-[#7a6890] text-sm sm:text-base">अभी कोई डेटा नहीं है। कृपया नीचे दिए गए बटन से फाइलें अपलोड करें।</p>
+                </div>
+              ) : (
+                <div className="grid gap-3 mb-8">
+                  {book.chapters.map((chapter, index) => (
+                    <button
+                      key={`chapter-btn-${book.id}-${chapter.id}-${index}`}
+                      onClick={() => {
+                        setSelectedChapter(chapter);
+                        setCurrentVerseIndex(0);
+                        setCurrentView('player');
+                      }}
+                      className={`group bg-white p-4 sm:p-5 rounded-2xl shadow-sm border-l-4 border-transparent flex items-center justify-between hover:bg-[#FFF8EE] transition-all text-left hover:shadow-md hover:translate-x-1 ${hoverBorder}`}
+                    >
+                      <div className="flex items-center gap-4 sm:gap-5">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-[#1a0a2e] to-[#2d1b4e] text-[#FFB703] flex items-center justify-center font-bold text-sm sm:text-base shrink-0 shadow-inner">
+                          {chapter.id}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-[#1C1018] sm:text-lg mb-1">{chapter.title}</h4>
+                          <p className="text-xs sm:text-sm text-[#7a6890]">{chapter.verses.length} श्लोक/मंत्र</p>
+                        </div>
+                      </div>
+                      <div className={`${primaryColor} text-xl font-bold opacity-0 group-hover:opacity-100 transition-opacity transform group-hover:translate-x-1`}>→</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className={`mt-2 p-6 sm:p-8 bg-white rounded-3xl border ${isUpanishad ? 'border-[#059669]/30' : 'border-[#FFB703]/30'} text-center shadow-inner relative overflow-hidden`}>
+                <div className="absolute top-0 right-0 -mt-4 -mr-4 text-7xl opacity-5">💾</div>
+                <div className={`mx-auto ${primaryColor} mb-3 flex justify-center text-4xl drop-shadow-sm`}>📂</div>
+                <h4 className={`text-lg font-bold ${primaryColor} mb-2 font-yatra`}>डिवाइस में नया डेटा जोड़ें</h4>
+                <p className="text-sm text-[#7a6890] mb-6 px-2 max-w-sm mx-auto">
+                  आप यहाँ <b>{book.title}</b> की फाइलें अपलोड कर सकते हैं। यह सब बिना इंटरनेट के आपके डिवाइस में सुरक्षित रहेगा।
+                </p>
+                
+                <div className="flex justify-center flex-wrap gap-4 mt-4">
+                  <label className={`cursor-pointer bg-gradient-to-r ${bgGradient} text-white px-6 py-3 rounded-xl shadow-[0_4px_16px_rgba(0,0,0,0.15)] inline-flex items-center gap-2 font-bold hover:scale-105 transition-transform`}>
+                    <span className="text-xl">📂</span>
+                    फाइलें चुनें
+                    <input 
+                      type="file" 
+                      multiple 
+                      accept=".txt,.json" 
+                      className="hidden" 
+                      onChange={(e) => handleFileUpload(e, selectedGita)} 
+                    />
+                  </label>
+                  
+                  {book.chapters.length > 0 && (
+                    <button 
+                      onClick={(e) => handleClearData(e, book.id)}
+                      className="bg-white border-2 border-red-100 text-red-500 px-5 py-3 rounded-xl font-bold hover:bg-red-50 transition-colors flex items-center gap-2"
+                      title="इस ग्रंथ का सारा डेटा डिलीट करें"
+                    >
+                      🗑️ हटाएं
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        );
+      };
+
+      const renderPlayer = () => {
+        const book = DYNAMIC_GITA_DATA[selectedGita];
+        const chapter = selectedChapter;
+        
+        if (!chapter || !chapter.verses || chapter.verses.length === 0) {
+          return (
+            <div className="h-full flex items-center justify-center pt-24 text-[#7a6890]">
+              इस अध्याय में अभी कोई श्लोक नहीं है।
+            </div>
+          );
+        }
+
+        const verse = chapter.verses[currentVerseIndex] || chapter.verses[0];
+        
+        const isUpanishad = book.category === 'upanishad';
+        const primaryColor = isUpanishad ? 'text-[#059669]' : 'text-[#E85D04]';
+        const bgGradient = isUpanishad ? 'from-[#059669] to-[#34d399]' : 'from-[#E85D04] to-[#FFB703]';
+
+        const verseKey = `${book.id}|${chapter.id}|${verse.id}`;
+        const isBookmarked = bookmarks.includes(verseKey);
+
+        // नया: यहाँ से सम्मिलित अर्थ का डेटा लिया जा रहा है
+        const meaningData = getDisplayMeaning(currentVerseIndex, chapter.verses);
+        const displayH = meaningData?.h || '';
+        const displayA = meaningData?.a || '';
+        const isCombined = meaningData?.isCombined;
+        const startId = meaningData?.startId;
+        const endId = meaningData?.endId;
+
+        return (
+          <>
+            <div className="sticky top-[64px] z-40 bg-[#FFF8EE]/95 backdrop-blur-md border-b border-[#e8dff5] shadow-sm w-full">
+              <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+                <button 
+                  onClick={() => setCurrentView('chapters')}
+                  className="inline-flex items-center gap-2 bg-[#1a0a2e] text-[#FFB703] border-none px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl cursor-pointer text-xs sm:text-sm font-bold hover:bg-[#2d1b4e] transition-colors"
+                >
+                  ← सूची
+                </button>
+                <div className="text-center mx-2 flex-1 min-w-0">
+                  <div className={`text-xs sm:text-sm ${primaryColor} font-bold truncate`}>{book.title}</div>
+                  <div className="text-[10px] sm:text-xs text-[#7a6890] truncate">{chapter.title}</div>
+                </div>
+                <div className="text-xs sm:text-sm font-bold text-[#7a6890] whitespace-nowrap bg-white px-3 py-1.5 rounded-lg border border-[#e8dff5]">
+                  {currentVerseIndex + 1} / {chapter.verses.length}
+                </div>
+              </div>
+            </div>
+
+            <div className="h-full flex flex-col animate-in fade-in slide-in-from-bottom-8 duration-500 pb-36 pt-6 max-w-3xl mx-auto px-4 w-full">
+              <div className="bg-white rounded-3xl p-5 sm:p-8 shadow-[0_8px_40px_rgba(60,20,100,0.1)] border border-[#e8dff5] relative">
+                <div className="flex justify-between items-center mb-6">
+                  <span className={`bg-gradient-to-br ${bgGradient} text-white px-5 py-2 rounded-full text-sm font-bold shadow-sm`}>
+                    {isUpanishad ? 'मंत्र' : 'श्लोक'} {verse?.id || currentVerseIndex + 1}
+                  </span>
+                  
+                  <button 
+                    onClick={() => toggleBookmark(book.id, chapter.id, verse.id)}
+                    className="text-3xl hover:scale-110 active:scale-95 transition-transform"
+                    title={isBookmarked ? "बुकमार्क हटाएं" : "बुकमार्क में जोड़ें"}
+                  >
+                    {isBookmarked ? '⭐' : '☆'}
+                  </button>
+                </div>
+
+                <div className="font-philo text-xl sm:text-2xl leading-loose text-[#1a0a2e] bg-gradient-to-br from-[#FFFBF0] to-[#FFF3DC] rounded-2xl p-6 sm:p-8 mb-6 border-l-[6px] border-[#FFB703] text-center shadow-inner">
+                  {verse?.s || 'कोई मूल श्लोक नहीं मिला'}
+                </div>
+                
+                {displayH && (
+                  <div className="mb-6">
+                    <div className={`text-[11px] sm:text-xs font-bold tracking-widest uppercase mb-2 flex items-center gap-2 ${primaryColor}`}>
+                      💡 {isCombined ? `सम्मिलित अर्थ (श्लोक ${startId}-${endId})` : 'सरल अर्थ'}
+                    </div>
+                    <div className="text-sm sm:text-base leading-relaxed text-[#4a3860] bg-[#FFF3DC] rounded-xl p-4 sm:p-5">
+                      {displayH}
+                    </div>
+                  </div>
+                )}
+
+                {displayA && (
+                  <div>
+                    <div className="text-[11px] sm:text-xs font-bold tracking-widest uppercase mb-2 flex items-center gap-2 text-[#059669]">
+                      🌿 {isCombined ? `सम्मिलित प्रयोग (श्लोक ${startId}-${endId})` : 'जीवन में प्रयोग'}
+                    </div>
+                    <div className="text-sm sm:text-base leading-relaxed text-[#1a4a30] bg-[#d1fae5] rounded-xl p-4 sm:p-5 border border-[#10b981]/20">
+                      {displayA}
+                    </div>
+                  </div>
+                )}
+
+                {/* अगर बिल्कुल भी अर्थ न मिले तो */}
+                {!displayH && !displayA && (
+                  <div className="mb-6 bg-[#FFF8EE] border border-[#FFB703]/30 rounded-xl p-5 text-center text-[#7a6890] shadow-sm flex flex-col items-center gap-3">
+                    <span className="text-3xl opacity-60 drop-shadow-sm">📜</span>
+                    <p className="text-sm font-medium">इस श्लोक का अर्थ फाइल में उपलब्ध नहीं है।</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-b from-[#1a0a2e]/95 to-[#1a0a2e] backdrop-blur-xl p-4 sm:p-5 shadow-[0_-8px_40px_rgba(0,0,0,0.4)] z-50 border-t border-[#FFB703]/20">
+              <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
+                <button 
+                  onClick={handlePrevVerse}
+                  disabled={currentVerseIndex === 0}
+                  className={`bg-white/10 border border-white/10 text-white px-4 py-3 rounded-2xl text-sm font-medium transition-all disabled:opacity-30 disabled:hover:bg-white/10 ${isUpanishad ? 'hover:bg-[#059669] hover:border-[#059669]' : 'hover:bg-[#E85D04] hover:border-[#E85D04]'}`}
+                >
+                  ◀ पिछला
+                </button>
+
+                <div className="flex-1 flex flex-col items-center">
+                  <button 
+                    onClick={togglePlay}
+                    className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full text-white text-xl flex items-center justify-center shadow-lg transition-transform hover:scale-110 ${isPlaying ? 'bg-gradient-to-br from-red-600 to-red-800' : `bg-gradient-to-br ${bgGradient}`}`}
+                  >
+                    {isPlaying ? '⏹' : '▶'}
+                  </button>
+                  <span className="text-[10px] text-white/50 mt-2 tracking-wider uppercase">
+                    {isPlaying ? 'सुन रहे हैं...' : 'सुनने के लिए दबाएँ'}
+                  </span>
+                </div>
+
+                <button 
+                  onClick={handleNextVerse}
+                  disabled={currentVerseIndex === chapter.verses.length - 1}
+                  className={`bg-white/10 border border-white/10 text-white px-4 py-3 rounded-2xl text-sm font-medium transition-all disabled:opacity-30 disabled:hover:bg-white/10 ${isUpanishad ? 'hover:bg-[#059669] hover:border-[#059669]' : 'hover:bg-[#E85D04] hover:border-[#E85D04]'}`}
+                >
+                  अगला ▶
+                </button>
+              </div>
+            </div>
+          </>
+        );
+      };
+
+      return (
+        <div className="min-h-screen bg-[#FFF8EE] flex flex-col font-noto text-[#1C1018]">
+          
+          {toastMessage && (
+            <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4">
+              <div className="bg-[#1a0a2e] text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 whitespace-nowrap border border-white/10">
+                <span className="text-xl">✅</span>
+                <span className="text-sm font-bold">{toastMessage}</span>
+              </div>
+            </div>
+          )}
+
+          {showInstallGuide && (
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+              <div className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-sm shadow-2xl relative animate-in zoom-in-95 border border-[#e8dff5]">
+                <button 
+                  onClick={() => setShowInstallGuide(false)}
+                  className="absolute right-4 top-4 text-gray-400 hover:text-gray-800 bg-gray-50 rounded-full p-2 transition-colors"
+                >
+                  <span className="text-xl">❌</span>
+                </button>
+                
+                <div className="w-14 h-14 bg-gradient-to-br from-[#FFF3DC] to-[#FFF8EE] border border-[#FFB703]/30 rounded-2xl flex items-center justify-center mb-5 text-[#E85D04] shadow-sm">
+                  <span className="text-2xl">⬇️</span>
+                </div>
+                
+                <h3 className="font-yatra text-2xl text-[#1a0a2e] mb-2">ऐप को ऑफलाइन कैसे चलाएं?</h3>
+                <p className="text-sm text-[#7a6890] mb-4">यह अब एक पूरी तरह से स्टैंडअलोन HTML फाइल है। इसे हमेशा के लिए ऑफलाइन इस्तेमाल करने के लिए:</p>
+                
+                <div className="space-y-3 mb-6 max-h-[45vh] overflow-y-auto hide-scrollbar">
+                  <div className="bg-[#FFF8EE] p-4 rounded-2xl border border-[#FFB703]/20">
+                    <h4 className="font-bold text-[#E85D04] text-sm mb-2 flex items-center gap-2">💾 1. फाइल सेव करें:</h4>
+                    <p className="text-xs text-[#4a3860] leading-relaxed">
+                      ऊपर दिए गए कोड को कॉपी करें या 'Download' बटन दबाएं और इसे अपने कंप्यूटर या फोन में <b>GitaApp.html</b> के नाम से सेव कर लें।
+                    </p>
+                  </div>
+                  
+                  <div className="bg-[#FFF8EE] p-4 rounded-2xl border border-[#FFB703]/20">
+                    <h4 className="font-bold text-[#E85D04] text-sm mb-2 flex items-center gap-2">🌐 2. पहली बार इंटरनेट से खोलें:</h4>
+                    <p className="text-xs text-[#4a3860] leading-relaxed">
+                      पहली बार इस फाइल पर डबल-क्लिक करके ब्राउज़र में खोलें (उस समय थोड़ा इंटरनेट चालू रखें ताकि इसके फोंट और डिजाइन एक बार लोड हो जाएं)।
+                    </p>
+                  </div>
+
+                  <div className="bg-[#FFF8EE] p-4 rounded-2xl border border-[#FFB703]/20">
+                    <h4 className="font-bold text-[#E85D04] text-sm mb-2 flex items-center gap-2">📴 3. हमेशा के लिए ऑफलाइन:</h4>
+                    <p className="text-xs text-[#4a3860] leading-relaxed">
+                      अब आप इंटरनेट बंद कर सकते हैं। जब भी आपको पढ़ना हो, बस उस <b>GitaApp.html</b> फाइल को खोलें। आपका सारा डेटा (फाइलें) फोन की लोकल मेमोरी में सुरक्षित रहेगा!
+                    </p>
+                  </div>
+                </div>
+                
+                <button 
+                  onClick={() => setShowInstallGuide(false)}
+                  className="w-full bg-gradient-to-r from-[#1a0a2e] to-[#2d1b4e] text-[#FFB703] font-bold py-3.5 rounded-xl hover:shadow-lg transition-all"
+                >
+                  मुझे समझ आ गया
+                </button>
+              </div>
+            </div>
+          )}
+
+          <header className="sticky top-0 z-50 h-[64px] bg-gradient-to-r from-[#1a0a2e] via-[#2d1b4e] to-[#3d2460] flex items-center justify-between px-5 shadow-[0_2px_20px_rgba(0,0,0,0.3)] shrink-0">
+            <div className="flex items-center gap-3 cursor-pointer" onClick={() => setCurrentView('home')}>
+              <span className="text-3xl drop-shadow-[0_0_8px_rgba(255,183,3,0.6)]">🕉️</span>
+              <span className="font-yatra text-xl sm:text-2xl text-[#FFB703] tracking-wide drop-shadow-md">आध्यात्मिक ग्रंथ</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setCurrentView('bookmarks')}
+                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all backdrop-blur-sm border border-white/5 mr-1"
+                title="मेरे बुकमार्क"
+              >
+                <span style={{fontSize: '18px'}}>🔖</span>
+              </button>
+              <button 
+                onClick={() => setShowInstallGuide(true)}
+                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all backdrop-blur-sm border border-white/5"
+                title="ऐप डाउनलोड जानकारी"
+              >
+                <span style={{fontSize: '18px'}}>⬇️</span>
+              </button>
+            </div>
+          </header>
+
+          <main className="flex-1 w-full relative">
+            {currentView === 'home' && renderHome()}
+            {currentView === 'chapters' && renderChapters()}
+            {currentView === 'player' && renderPlayer()}
+            {currentView === 'bookmarks' && renderBookmarks()}
+          </main>
+
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
